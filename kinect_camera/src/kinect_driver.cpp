@@ -52,6 +52,8 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
     f_ctx_(NULL), f_dev_(NULL),
     started_(false),
     depth_sent_ (false), rgb_sent_ (false), enable_rgb_stream_(true),
+    depth_roi_horiz_start_(0), depth_roi_horiz_width_(width_),
+    depth_roi_vert_start_(0), depth_roi_vert_height_(height_),
     have_depth_matrix_(false),
     can_switch_stream_(false)
 {
@@ -71,8 +73,12 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
     cloud_.channels[0].values.resize(width_ * height_);
   }
 
-  cloud2_.height = height_;
-  cloud2_.width = width_;
+  param_nh.param("depth_roi_horiz_start", depth_roi_horiz_start_, depth_roi_horiz_start_);
+  param_nh.param("depth_roi_horiz_width", depth_roi_horiz_width_, depth_roi_horiz_width_);
+  param_nh.param("depth_roi_vert_start", depth_roi_vert_start_, depth_roi_vert_start_);
+  param_nh.param("depth_roi_vert_height", depth_roi_vert_height_, depth_roi_vert_height_);
+  cloud2_.height = depth_roi_vert_height_;
+  cloud2_.width = depth_roi_horiz_width_;
   if (enable_rgb_stream_)
   {
   cloud2_.fields.resize (4);
@@ -304,15 +310,15 @@ void
   {
     float bad_point = std::numeric_limits<float>::quiet_NaN ();
     // Assemble an awesome sensor_msgs/PointCloud2 message
-    for (int u = 0; u < width_; ++u) 
+    for (int u = 0; u < depth_roi_horiz_width_; ++u)
     {
-      for (int v = 0; v < height_; ++v)
+      for (int v = 0; v < depth_roi_vert_height_; ++v)
       {
-        float *pstep = (float*)&cloud2_.data[(v * width_ + u) * cloud2_.point_step];
+        float *pstep = (float*)&cloud2_.data[(v * depth_roi_horiz_width_ + u) * cloud2_.point_step];
         int d = 0;
 
         float x, y, z;
-        if (getPoint3D (buf, u, v, x, y, z))
+        if (getPoint3D (buf, u+depth_roi_horiz_start_, v+depth_roi_vert_start_, x, y, z))
         {
           pstep[d++] = x;
           pstep[d++] = y;

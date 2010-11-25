@@ -13,6 +13,10 @@
     <param name="rgb/camera_info_url"   value="file://$(find kinect_camera)/info/calibration_rgb.yaml" />
     <param name="depth/camera_info_url" value="file://$(find kinect_camera)/info/calibration_depth.yaml" />
     <param name="enable_rgb_stream" value="false" type="bool"/>
+    <param name="depth_roi_horiz_start" value="0" type="int"/>
+    <param name="depth_roi_horiz_width" value="640" type="int"/>
+    <param name="depth_roi_vert_start" value="400" type="int"/>
+    <param name="depth_roi_vert_height" value="80" type="int"/>
   </node>
 
 </launch>

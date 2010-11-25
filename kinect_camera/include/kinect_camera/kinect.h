@@ -189,6 +189,12 @@ namespace kinect_camera
       /** \brief parameter to enable/disable RGB stream */
       bool enable_rgb_stream_;
 
+      /** \brief parameters to define a region of interest in the depth image */
+      int depth_roi_horiz_start_;
+      int depth_roi_horiz_width_;
+      int depth_roi_vert_start_;
+      int depth_roi_vert_height_;
+
       /** \brief Accelerometer data */
       double accel_x_, accel_y_, accel_z_;
 
