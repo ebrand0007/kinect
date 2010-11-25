@@ -51,7 +51,7 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
     width_ (640), height_ (480),
     f_ctx_(NULL), f_dev_(NULL),
     started_(false),
-    depth_sent_ (false), rgb_sent_ (false), 
+    depth_sent_ (false), rgb_sent_ (false), enable_rgb_stream_(true),
     have_depth_matrix_(false),
     can_switch_stream_(false)
 {
@@ -61,19 +61,30 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
   
   // Assemble the point cloud data
   std::string kinect_depth_frame;
+  param_nh.param ("enable_rgb_stream", enable_rgb_stream_, enable_rgb_stream_);
   param_nh.param ("kinect_depth_frame", kinect_depth_frame, std::string ("/kinect_depth"));
   cloud_.header.frame_id = cloud2_.header.frame_id = kinect_depth_frame;
-  cloud_.channels.resize (1);
-  cloud_.channels[0].name = "rgb";
-  cloud_.channels[0].values.resize (width_ * height_);
+  if (enable_rgb_stream_)
+  {
+    cloud_.channels.resize(1);
+    cloud_.channels[0].name = "rgb";
+    cloud_.channels[0].values.resize(width_ * height_);
+  }
 
   cloud2_.height = height_;
   cloud2_.width = width_;
+  if (enable_rgb_stream_)
+  {
   cloud2_.fields.resize (4);
+  cloud2_.fields[3].name = "rgb";
+  }
+  else
+  {
+    cloud2_.fields.resize(3);
+  }
   cloud2_.fields[0].name = "x";
   cloud2_.fields[1].name = "y";
   cloud2_.fields[2].name = "z";
-  cloud2_.fields[3].name = "rgb";
 
   // Set all the fields types accordingly
   int offset = 0;
@@ -179,7 +190,8 @@ bool
   // Set the appropriate data callbacks
   freenect_set_user(f_dev_, this);
   freenect_set_depth_callback (f_dev_, &KinectDriver::depthCbInternal);
-  freenect_set_rgb_callback   (f_dev_, &KinectDriver::rgbCbInternal);
+  if (enable_rgb_stream_)
+    freenect_set_rgb_callback   (f_dev_, &KinectDriver::rgbCbInternal);
   freenect_set_ir_callback    (f_dev_, &KinectDriver::irCbInternal);
   
   updateDeviceSettings();
@@ -216,33 +228,37 @@ KinectDriver::~KinectDriver ()
 }
 
 /** \brief Start (resume) the data acquisition process. */
-void 
-  KinectDriver::start ()
+void KinectDriver::start()
 {
-  freenect_start_depth (f_dev_);
-  if (config_.color_format == FREENECT_FORMAT_IR)
-    freenect_start_ir (f_dev_);
-  else
-    freenect_start_rgb (f_dev_);
-  
+  freenect_start_depth(f_dev_);
+  if (enable_rgb_stream_)
+  {
+    if (config_.color_format == FREENECT_FORMAT_IR)
+      freenect_start_ir(f_dev_);
+    else
+      freenect_start_rgb(f_dev_);
+  }
+
   if (config_.calibration_mode)
     format_switch_timer_.start();
-  
+
   started_ = true;
 }
 
 /** \brief Stop (pause) the data acquisition process. */
 void 
-  KinectDriver::stop ()
+  KinectDriver::stop()
 {
-  freenect_stop_depth (f_dev_);
-  if (config_.color_format == FREENECT_FORMAT_IR)
-    freenect_stop_ir (f_dev_);
-  else
-    freenect_stop_rgb (f_dev_);
-
+  freenect_stop_depth(f_dev_);
+  if (enable_rgb_stream_)
+  {
+    if (config_.color_format == FREENECT_FORMAT_IR)
+      freenect_stop_ir(f_dev_);
+    else
+      freenect_stop_rgb(f_dev_);
+  }
   format_switch_timer_.stop();
-  
+
   started_ = false;
 }
 
@@ -302,7 +318,8 @@ void
           pstep[d++] = y;
           pstep[d++] = z;
           // Fill in RGB
-          pstep[d++] = 0;
+          if (enable_rgb_stream_)
+            pstep[d++] = 0;
         }
         else
         {
@@ -310,7 +327,8 @@ void
           pstep[d++] = bad_point;
           pstep[d++] = bad_point;
           // Fill in RGB
-          pstep[d++] = 0;
+          if (enable_rgb_stream_)
+            pstep[d++] = 0;
         }
       }
     }
@@ -321,8 +339,8 @@ void
     depthBufferTo8BitImage(buf);
   }
 
-  // Publish only if we have an rgb image too
-  if (!rgb_sent_) 
+  // Publish only if we have an rgb image too, unless we aren't capturing rgb
+  if ((!enable_rgb_stream_) or (!rgb_sent_))
     publish ();
 }
 
@@ -422,7 +440,7 @@ void
   if (pub_points2_.getNumSubscribers () > 0)
     pub_points2_.publish (cloud2_);
 
-  rgb_sent_   = true;
+  //rgb_sent_   = true;
   depth_sent_ = true;
   can_switch_stream_ = true;
 }

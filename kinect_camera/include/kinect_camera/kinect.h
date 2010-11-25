@@ -186,6 +186,9 @@ namespace kinect_camera
       bool depth_sent_;
       bool rgb_sent_; 
 
+      /** \brief parameter to enable/disable RGB stream */
+      bool enable_rgb_stream_;
+
       /** \brief Accelerometer data */
       double accel_x_, accel_y_, accel_z_;
 

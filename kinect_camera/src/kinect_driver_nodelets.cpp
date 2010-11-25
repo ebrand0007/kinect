@@ -56,7 +56,7 @@ void
     return;
   k->start ();
 
-  ros::Duration r (0.0001);
+  ros::Duration r (0.01);
   while (ros::ok () && k->ok ())
   {
     ros::spinOnce ();
