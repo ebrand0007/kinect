@@ -9,3 +9,10 @@ freenect/libfreenect
 */bin/*
 */lib/*
 build
+kinect_camera/src/kinect_camera/cfg
+kinect_camera/cfg/*.cfgc
+freenect/installed
+freenect/precleaned
+freenect/rospack_nosubdirs
+kinect_camera/docs
+kinect_camera/cfg/cpp
