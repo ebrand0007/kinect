@@ -1,0 +1,34 @@
+<launch>
+    <!-- Run a VoxelGrid filter to clean NaNs and downsample the data -->
+    <node pkg="nodelet" type="nodelet" name="voxel_grid"
+        args="load pcl/VoxelGrid kinect_manager" output="screen">
+        <remap from="~input" to="/kinect/points2" />
+        <remap from="~output" to="/kinect_pcl/points2_grid" />
+        <rosparam>#
+            filter_field_name: z
+            filter_limit_min: 0.1
+            filter_limit_max: 3.5
+            filter_limit_negative: False
+            leaf_size: 0.05
+        </rosparam>
+    </node>
+    
+    <!-- Run a SACSegmentation filter to find the points lying on the floor -->
+    <node pkg="nodelet" type="nodelet" name="find_plane"
+        args="load pcl/SACSegmentation kinect_manager" output="screen">
+        <remap from="~input" to="/kinect_pcl/points2_grid" />
+        <remap from="~inliers" to="/kinect_pcl/plane_indices" />
+        <rosparam>#
+            model_type: 0
+            distance_threshold: 0.02
+    </rosparam>
+    </node>
+    <node pkg="nodelet" type="nodelet" name="extract"
+        args="load pcl/ExtractIndices kinect_manager" output="screen">
+        <remap from="~indices" to="/kinect_pcl/plane_indices" />
+        <remap from="~input" to="/kinect_pcl/points2_grid" />
+        <remap from="~output" to="/kinect_pcl/plane_points" />
+    </node>
+
+</launch>
+
