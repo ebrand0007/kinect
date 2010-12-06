@@ -1,27 +1,27 @@
 <launch>
-  <node pkg="tf" type="static_transform_publisher" name="world_to_kinect_rgb" 
-    args="0 0 0.30 -1.57 0 -2.00 /ned /kinect_rgb 200" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_kinect_rgb" args="0 0 0.30 -1.57 0 -2.00 /ned /kinect_rgb 200"/>
   <!--  node pkg="tf" type="static_transform_publisher" name="kinect_depth_to_cam" 
     args="0 0 0 0 0 0 /cam /kinect_depth 200" /-->
-  <node pkg="tf" type="static_transform_publisher" name="kinect_rgb_to_kinect_depth" 
-    args="-0.03 0.0 0.0 0.0 0.0 0.0 /kinect_rgb /kinect_depth 200" />
-  <node pkg="tf" type="static_transform_publisher" name="ned_to_imu" 
-    args="0 0 -1.0 0.0 0.0 0.0 /ned /imu 200" />
+  <node pkg="tf" type="static_transform_publisher" name="kinect_rgb_to_kinect_depth" args="-0.03 0.0 0.0 0.0 0.0 0.0 /kinect_rgb /kinect_depth 200"/>
+  <node pkg="tf" type="static_transform_publisher" name="ned_to_imu" args="0 0 -1.0 0.0 0.0 0.0 /ned /imu 200"/>
 
-  <node pkg="nodelet" type="nodelet" name="kinect_manager" args="manager" output="screen" />
+  <node pkg="nodelet" type="nodelet" name="kinect_manager" args="manager" output="screen"/>
 
   <node pkg="nodelet" type="nodelet" name="kinect" args="load kinect_camera/KinectDriverNodelet kinect_manager" output="screen">
-    <remap from="camera" to="kinect" />
-    <param name="device_id" value="0" />
+    <remap from="camera" to="kinect"/>
+    <param name="device_id" value="0"/>
     <!-- TODO Different calibration files for the two cameras! -->
-    <param name="rgb/camera_info_url"   value="file://$(find kinect_camera)/info/calibration_rgb.yaml" />
-    <param name="depth/camera_info_url" value="file://$(find kinect_camera)/info/calibration_depth.yaml" />
-    <param name="enable_rgb_stream" value="false" type="bool"/>
-    <param name="depth_roi_horiz_start" value="0" type="int"/>
-    <param name="depth_roi_horiz_width" value="640" type="int"/>
-    <param name="depth_roi_vert_start" value="0" type="int"/>
-    <param name="depth_roi_vert_height" value="480" type="int"/>
-    <param name="max_range" value="10.0"/>
+    <param name="rgb/camera_info_url" value="file://$(find kinect_camera)/info/calibration_rgb.yaml"/>
+    <param name="depth/camera_info_url" value="file://$(find kinect_camera)/info/calibration_depth.yaml"/>
+    <rosparam>
+      device_id: 0
+      enable_rgb_stream: false
+      depth_roi_horiz_start: 80
+      depth_roi_horiz_width: 480
+      depth_roi_vert_start: 120
+      depth_roi_vert_height: 40
+      max_range: 5.0
+    </rosparam>
   </node>
 
 </launch>

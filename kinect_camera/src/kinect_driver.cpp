@@ -145,7 +145,8 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
 
   // Publishers and subscribers
   image_transport::ImageTransport it(comm_nh);
-  pub_rgb_     = it.advertiseCamera ("rgb/image_raw", 1);
+  if (enable_rgb_stream_)
+    pub_rgb_     = it.advertiseCamera ("rgb/image_raw", 1);
   pub_depth_   = it.advertiseCamera ("depth/image_raw", 1);
   pub_ir_      = it.advertiseCamera ("ir/image_raw", 1);
   pub_points_  = comm_nh.advertise<sensor_msgs::PointCloud>("points", 15);
@@ -434,7 +435,7 @@ void
     if (pub_ir_.getNumSubscribers() > 0)
       pub_ir_.publish (boost::make_shared<const sensor_msgs::Image> (rgb_image_), boost::make_shared<const sensor_msgs::CameraInfo> (depth_info_));
   }
-  else if (pub_rgb_.getNumSubscribers () > 0)
+  else if (enable_rgb_stream_ and pub_rgb_.getNumSubscribers () > 0)
     pub_rgb_.publish (boost::make_shared<const sensor_msgs::Image> (rgb_image_), boost::make_shared<const sensor_msgs::CameraInfo> (rgb_info_)); 
 
   // Publish depth Image

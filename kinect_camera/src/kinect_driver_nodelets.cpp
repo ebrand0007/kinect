@@ -56,10 +56,11 @@ void
     return;
   k->start ();
 
-  ros::Duration r (0.01);
+  ros::Duration r (0.0001);
   while (ros::ok () && k->ok ())
   {
     ros::spinOnce ();
     r.sleep ();
   }
+  ROS_INFO("Something is not ok()");
 }

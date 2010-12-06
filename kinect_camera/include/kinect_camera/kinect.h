@@ -120,7 +120,12 @@ namespace kinect_camera
         tilt_angle_ = freenect_get_tilt_degs(state);
         //ROS_INFO("tilt angle: %g", tilt_angle_);
         publishImu();
-        return (freenect_process_events (f_ctx_) >= 0);
+        timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+        int retval = freenect_process_events_nonblock (f_ctx_, &tv);
+        //ROS_INFO_STREAM("retval = " << retval);
+        return (retval >= 0);
       }
 
     protected:
