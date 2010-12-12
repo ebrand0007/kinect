@@ -9,3 +9,8 @@ freenect/libfreenect
 */bin/*
 */lib/*
 build
+freenect/
+kinect_camera/cfg/*.cfgc
+kinect_camera/cfg/cpp
+kinect_camera/docs
+kinect_camera/src/kinect_camera/cfg

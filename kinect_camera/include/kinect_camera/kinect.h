@@ -41,6 +41,7 @@
 #ifndef KINECT_NODE_KINECT_H_
 #define KINECT_NODE_KINECT_H_
 
+#include <vector>
 #include <libusb.h>
 #include <boost/thread/mutex.hpp>
 
@@ -57,6 +58,7 @@
 #include <image_transport/image_transport.h>
 #include <dynamic_reconfigure/server.h>
 #include <kinect_camera/KinectConfig.h>
+#include <pcl/PointIndices.h>
 
 //@todo: warnings about deprecated header? 
 #include <image_geometry/pinhole_camera_model.h>
@@ -120,7 +122,12 @@ namespace kinect_camera
         tilt_angle_ = freenect_get_tilt_degs(state);
         //ROS_INFO("tilt angle: %g", tilt_angle_);
         publishImu();
-        return (freenect_process_events (f_ctx_) >= 0);
+        timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+        int retval = freenect_process_events_nonblock (f_ctx_, &tv);
+        //ROS_INFO_STREAM("retval = " << retval);
+        return (retval >= 0);
       }
 
     protected:
@@ -139,6 +146,7 @@ namespace kinect_camera
         * \param z the resultant z coordinate of the point
         */
       inline bool getPoint3D (freenect_depth *buf, int u, int v, float &x, float &y, float &z) const;
+      inline bool getPoint3D (freenect_depth *buf, int i, float &x, float &y, float &z) const;
 
     private:
       /** \brief Internal mutex. */
@@ -148,6 +156,9 @@ namespace kinect_camera
       image_transport::CameraPublisher pub_rgb_, pub_depth_, pub_ir_;
       ros::Publisher pub_points_, pub_points2_;
       ros::Publisher pub_imu_;
+
+      /** \brief ROS subscribers. */
+      ros::Subscriber sub_mask_indices_;
 
       /** \brief Camera info manager objects. */
       boost::shared_ptr<CameraInfoManager> rgb_info_manager_, depth_info_manager_;
@@ -211,6 +222,9 @@ namespace kinect_camera
       ros::Timer format_switch_timer_;
       bool can_switch_stream_;
 
+      /** \brief vector to hold the 'mask' (indices to output) **/
+      std::vector<int32_t> mask_indices_;
+
       /** \brief Callback for dynamic_reconfigure */
       void configCb (Config &config, uint32_t level);
 
@@ -237,6 +251,9 @@ namespace kinect_camera
       void depthBufferTo8BitImage(const freenect_depth * buf);
 
       void formatSwitchCb(const ros::TimerEvent& e);
+
+      void maskIndicesCb(const pcl::PointIndicesConstPtr& indices);
+      void setMask();
   };
 
 } // namespace kinect_camera
