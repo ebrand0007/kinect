@@ -62,4 +62,5 @@ void
     ros::spinOnce ();
     r.sleep ();
   }
+  ROS_INFO("Something is not ok()");
 }

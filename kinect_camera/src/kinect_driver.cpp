@@ -51,7 +51,9 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
     width_ (640), height_ (480),
     f_ctx_(NULL), f_dev_(NULL),
     started_(false),
-    depth_sent_ (false), rgb_sent_ (false), 
+    depth_sent_ (false), rgb_sent_ (false), enable_rgb_stream_(true),
+    depth_roi_horiz_start_(0), depth_roi_horiz_width_(width_),
+    depth_roi_vert_start_(0), depth_roi_vert_height_(height_),
     have_depth_matrix_(false),
     can_switch_stream_(false)
 {
@@ -61,19 +63,42 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
   
   // Assemble the point cloud data
   std::string kinect_depth_frame;
+  param_nh.param ("enable_rgb_stream", enable_rgb_stream_, enable_rgb_stream_);
   param_nh.param ("kinect_depth_frame", kinect_depth_frame, std::string ("/kinect_depth"));
   cloud_.header.frame_id = cloud2_.header.frame_id = kinect_depth_frame;
-  cloud_.channels.resize (1);
-  cloud_.channels[0].name = "rgb";
-  cloud_.channels[0].values.resize (width_ * height_);
+  if (enable_rgb_stream_)
+  {
+    cloud_.channels.resize(1);
+    cloud_.channels[0].name = "rgb";
+    cloud_.channels[0].values.resize(width_ * height_);
+  }
 
-  cloud2_.height = height_;
-  cloud2_.width = width_;
+  param_nh.param("depth_roi_horiz_start", depth_roi_horiz_start_, depth_roi_horiz_start_);
+  param_nh.param("depth_roi_horiz_width", depth_roi_horiz_width_, depth_roi_horiz_width_);
+  param_nh.param("depth_roi_vert_start", depth_roi_vert_start_, depth_roi_vert_start_);
+  param_nh.param("depth_roi_vert_height", depth_roi_vert_height_, depth_roi_vert_height_);
+//  cloud2_.height = depth_roi_vert_height_;
+//  cloud2_.width = depth_roi_horiz_width_;
+  mask_indices_.resize(depth_roi_vert_height_ * depth_roi_horiz_width_);
+  for (int i = 0; i < depth_roi_vert_height_; i++)
+    for (int j = 0; j < depth_roi_horiz_width_; j++)
+    {
+      mask_indices_[i*depth_roi_horiz_width_ + j] = 640*(depth_roi_vert_start_+i) + depth_roi_horiz_start_ + j;
+    }
+  setMask();
+
+  if (enable_rgb_stream_)
+  {
   cloud2_.fields.resize (4);
+  cloud2_.fields[3].name = "rgb";
+  }
+  else
+  {
+    cloud2_.fields.resize(3);
+  }
   cloud2_.fields[0].name = "x";
   cloud2_.fields[1].name = "y";
   cloud2_.fields[2].name = "z";
-  cloud2_.fields[3].name = "rgb";
 
   // Set all the fields types accordingly
   int offset = 0;
@@ -87,7 +112,7 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
   cloud2_.point_step = offset;
   cloud2_.row_step   = cloud2_.point_step * cloud2_.width;
   cloud2_.data.resize (cloud2_.row_step   * cloud2_.height);
-  cloud2_.is_dense = true;
+  cloud2_.is_dense = false;
 
   // Assemble the depth image data
   depth_image_.header.frame_id = kinect_depth_frame;
@@ -128,18 +153,40 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
 
   // Publishers and subscribers
   image_transport::ImageTransport it(comm_nh);
-  pub_rgb_     = it.advertiseCamera ("rgb/image_raw", 1);
+  if (enable_rgb_stream_)
+    pub_rgb_     = it.advertiseCamera ("rgb/image_raw", 1);
   pub_depth_   = it.advertiseCamera ("depth/image_raw", 1);
   pub_ir_      = it.advertiseCamera ("ir/image_raw", 1);
   pub_points_  = comm_nh.advertise<sensor_msgs::PointCloud>("points", 15);
   pub_points2_ = comm_nh.advertise<sensor_msgs::PointCloud2>("points2", 15);
   pub_imu_ = comm_nh.advertise<sensor_msgs::Imu>("imu", 15);
+  sub_mask_indices_ = comm_nh.subscribe("mask_indices", 10, &KinectDriver::maskIndicesCb, this);
 
   // Timer for switching between IR and color image streams when in calibration mode.
   // libfreenect freezes if we try to do this in the image callbacks.
   // Too short a period and the switching doesn't work (why?), 0.3s seems to be OK.
   format_switch_timer_ = comm_nh.createTimer(ros::Duration(0.3), &KinectDriver::formatSwitchCb, this);
   format_switch_timer_.stop();
+}
+
+/** \brief mask indices callback
+ *
+ *
+ */
+void KinectDriver::maskIndicesCb(const pcl::PointIndicesConstPtr& indices)
+{
+  mask_indices_.resize(indices->indices.size());
+  ROS_INFO("New mask with %d indices", int(mask_indices_.size()));
+  memcpy(mask_indices_.data(), indices->indices.data(), indices->indices.size()*sizeof(int32_t));
+  setMask();
+}
+
+void KinectDriver::setMask()
+{
+  cloud2_.data.resize(cloud2_.point_step * mask_indices_.size());
+  cloud2_.width = mask_indices_.size();
+  cloud2_.height = 1;
+  cloud2_.is_dense = false;
 }
 
 /** \brief Initialize a Kinect device, given an index.
@@ -179,7 +226,8 @@ bool
   // Set the appropriate data callbacks
   freenect_set_user(f_dev_, this);
   freenect_set_depth_callback (f_dev_, &KinectDriver::depthCbInternal);
-  freenect_set_rgb_callback   (f_dev_, &KinectDriver::rgbCbInternal);
+  if (enable_rgb_stream_)
+    freenect_set_rgb_callback   (f_dev_, &KinectDriver::rgbCbInternal);
   freenect_set_ir_callback    (f_dev_, &KinectDriver::irCbInternal);
   
   updateDeviceSettings();
@@ -216,33 +264,37 @@ KinectDriver::~KinectDriver ()
 }
 
 /** \brief Start (resume) the data acquisition process. */
-void 
-  KinectDriver::start ()
+void KinectDriver::start()
 {
-  freenect_start_depth (f_dev_);
-  if (config_.color_format == FREENECT_FORMAT_IR)
-    freenect_start_ir (f_dev_);
-  else
-    freenect_start_rgb (f_dev_);
-  
+  freenect_start_depth(f_dev_);
+  if (enable_rgb_stream_)
+  {
+    if (config_.color_format == FREENECT_FORMAT_IR)
+      freenect_start_ir(f_dev_);
+    else
+      freenect_start_rgb(f_dev_);
+  }
+
   if (config_.calibration_mode)
     format_switch_timer_.start();
-  
+
   started_ = true;
 }
 
 /** \brief Stop (pause) the data acquisition process. */
 void 
-  KinectDriver::stop ()
+  KinectDriver::stop()
 {
-  freenect_stop_depth (f_dev_);
-  if (config_.color_format == FREENECT_FORMAT_IR)
-    freenect_stop_ir (f_dev_);
-  else
-    freenect_stop_rgb (f_dev_);
-
+  freenect_stop_depth(f_dev_);
+  if (enable_rgb_stream_)
+  {
+    if (config_.color_format == FREENECT_FORMAT_IR)
+      freenect_stop_ir(f_dev_);
+    else
+      freenect_stop_rgb(f_dev_);
+  }
   format_switch_timer_.stop();
-  
+
   started_ = false;
 }
 
@@ -251,13 +303,12 @@ void
   * \param buf the resultant output buffer
   * \param timestamp the time when the data was acquired
   */
-void 
-  KinectDriver::depthCb (freenect_device *dev, freenect_depth *buf, uint32_t timestamp)
+void KinectDriver::depthCb(freenect_device *dev, freenect_depth *buf, uint32_t timestamp)
 {
-  boost::mutex::scoped_lock lock (buffer_mutex_);
+  boost::mutex::scoped_lock lock(buffer_mutex_);
 
   // if first time in this function, build the depth projection matrix
-  if(!have_depth_matrix_)
+  if (!have_depth_matrix_)
   {
     createDepthProjectionMatrix();
     have_depth_matrix_ = true;
@@ -266,64 +317,69 @@ void
   depth_sent_ = false;
 
   // Convert the data to ROS format
-  if (pub_points_.getNumSubscribers () > 0)
+  if (pub_points_.getNumSubscribers() > 0)
   {
-    cloud_.points.resize (width_ * height_);
+    cloud_.points.resize(width_ * height_);
     int nrp = 0;
     // Assemble an ancient sensor_msgs/PointCloud message
-    for (int u = 0; u < width_; ++u) 
+    for (int u = 0; u < width_; ++u)
     {
       for (int v = 0; v < height_; ++v)
       {
-        if (!getPoint3D (buf, u, v, cloud_.points[nrp].x, cloud_.points[nrp].y, cloud_.points[nrp].z))
+        if (!getPoint3D(buf, u, v, cloud_.points[nrp].x, cloud_.points[nrp].y, cloud_.points[nrp].z))
           continue;
 
         nrp++;
       }
     }
     // Resize to the correct number of points
-    cloud_.points.resize (nrp);
+    cloud_.points.resize(nrp);
   }
-  if (pub_points2_.getNumSubscribers () > 0)
+  if (pub_points2_.getNumSubscribers() > 0)
   {
-    float bad_point = std::numeric_limits<float>::quiet_NaN ();
+    float bad_point = std::numeric_limits<float>::quiet_NaN();
     // Assemble an awesome sensor_msgs/PointCloud2 message
-    for (int u = 0; u < width_; ++u) 
-    {
-      for (int v = 0; v < height_; ++v)
-      {
-        float *pstep = (float*)&cloud2_.data[(v * width_ + u) * cloud2_.point_step];
-        int d = 0;
+    //    for (int u = 0; u < depth_roi_horiz_width_; ++u)
+    //    {
+    //      for (int v = 0; v < depth_roi_vert_height_; ++v)
+    //      {
 
-        float x, y, z;
-        if (getPoint3D (buf, u, v, x, y, z))
-        {
-          pstep[d++] = x;
-          pstep[d++] = y;
-          pstep[d++] = z;
-          // Fill in RGB
+    for (unsigned int i = 0; i < mask_indices_.size(); ++i)
+    {
+      float *pstep = (float*)&cloud2_.data[i * cloud2_.point_step];
+      int d = 0;
+
+      float x, y, z;
+      if (getPoint3D(buf, mask_indices_[i], x, y, z))
+      {
+        pstep[d++] = x;
+        pstep[d++] = y;
+        pstep[d++] = z;
+        // Fill in RGB
+        if (enable_rgb_stream_)
           pstep[d++] = 0;
-        }
-        else
-        {
-          pstep[d++] = bad_point;
-          pstep[d++] = bad_point;
-          pstep[d++] = bad_point;
-          // Fill in RGB
-          pstep[d++] = 0;
-        }
       }
+      else
+      {
+        pstep[d++] = bad_point;
+        pstep[d++] = bad_point;
+        pstep[d++] = bad_point;
+        // Fill in RGB
+        if (enable_rgb_stream_)
+          pstep[d++] = 0;
+      }
+      //      }
     }
   }
-  if (pub_depth_.getNumSubscribers () > 0)
-  { 
+  if (pub_depth_.getNumSubscribers() > 0)
+  {
     // Fill in the depth image data
     depthBufferTo8BitImage(buf);
   }
 
-  // Publish only if we have an rgb image too
-  if (!rgb_sent_) 
-    publish ();
+  // Publish only if we have an rgb image too, unless we aren't capturing rgb
+  if ((!enable_rgb_stream_) or (!rgb_sent_))
+    publish();
 }
 
 /** \brief RGB callback. Virtual.
@@ -405,24 +461,25 @@ void
   depth_image_.header.stamp = depth_info_.header.stamp = time;
 
   // Publish RGB or IR Image
-  if (config_.color_format == FREENECT_FORMAT_IR) {
+  if (config_.color_format == FREENECT_FORMAT_IR)
+  {
     if (pub_ir_.getNumSubscribers() > 0)
-      pub_ir_.publish(rgb_image_, depth_info_);
+      pub_ir_.publish (boost::make_shared<const sensor_msgs::Image> (rgb_image_), boost::make_shared<const sensor_msgs::CameraInfo> (depth_info_));
   }
-  else if (pub_rgb_.getNumSubscribers () > 0)
-    pub_rgb_.publish (rgb_image_, rgb_info_); 
+  else if (enable_rgb_stream_ and pub_rgb_.getNumSubscribers () > 0)
+    pub_rgb_.publish (boost::make_shared<const sensor_msgs::Image> (rgb_image_), boost::make_shared<const sensor_msgs::CameraInfo> (rgb_info_)); 
 
   // Publish depth Image
   if (pub_depth_.getNumSubscribers () > 0)
-    pub_depth_.publish (depth_image_, depth_info_); 
+    pub_depth_.publish (boost::make_shared<const sensor_msgs::Image> (depth_image_), boost::make_shared<const sensor_msgs::CameraInfo> (depth_info_));
 
   // Publish the PointCloud messages
   if (pub_points_.getNumSubscribers () > 0)
-    pub_points_.publish  (cloud_);
+    pub_points_.publish  (boost::make_shared<const sensor_msgs::PointCloud> (cloud_));
   if (pub_points2_.getNumSubscribers () > 0)
-    pub_points2_.publish (cloud2_);
+    pub_points2_.publish (boost::make_shared<const sensor_msgs::PointCloud2> (cloud2_));
 
-  rgb_sent_   = true;
+  //rgb_sent_   = true;
   depth_sent_ = true;
   can_switch_stream_ = true;
 }
@@ -536,9 +593,15 @@ inline double KinectDriver::getDistanceFromReading(freenect_depth reading) const
   return A / (B - reading);
 }
 
-inline bool KinectDriver::getPoint3D (freenect_depth *buf, int u, int v, float &x, float &y, float &z) const
+inline bool KinectDriver::getPoint3D(freenect_depth *buf, int u, int v, float &x, float &y, float &z) const
 {
-  int reading = buf[v * width_ + u];
+  int i = v * width_ + u;
+  return getPoint3D(buf, i, x, y, z);
+}
+
+inline bool KinectDriver::getPoint3D (freenect_depth *buf, int i, float &x, float &y, float &z) const
+{
+  int reading = buf[i];
 
   if (reading  >= 2048 || reading <= 0) 
     return (false);
@@ -548,7 +611,7 @@ inline bool KinectDriver::getPoint3D (freenect_depth *buf, int u, int v, float &
   if (range > config_.max_range || range <= 0)
     return (false);  
 
-  cv::Point3d rectRay = depth_proj_matrix_[v*width_ + u];
+  cv::Point3d rectRay = depth_proj_matrix_[i];
   rectRay *= range;
   x = rectRay.x;
   y = rectRay.y;
