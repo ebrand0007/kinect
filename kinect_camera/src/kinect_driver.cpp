@@ -176,7 +176,7 @@ KinectDriver::KinectDriver (ros::NodeHandle comm_nh, ros::NodeHandle param_nh)
 void KinectDriver::maskIndicesCb(const pcl::PointIndicesConstPtr& indices)
 {
   mask_indices_.resize(indices->indices.size());
-  ROS_INFO("New mask with %d indices", int(mask_indices_.size()));
+  //ROS_INFO("New mask with %d indices", int(mask_indices_.size()));
   memcpy(mask_indices_.data(), indices->indices.data(), indices->indices.size()*sizeof(int32_t));
   setMask();
 }
@@ -343,8 +343,8 @@ void KinectDriver::depthCb(freenect_device *dev, freenect_depth *buf, uint32_t t
     //    {
     //      for (int v = 0; v < depth_roi_vert_height_; ++v)
     //      {
-
-    for (unsigned int i = 0; i < mask_indices_.size(); ++i)
+    unsigned int nMask = mask_indices_.size();
+    for (unsigned int i = 0; i < nMask; ++i)
     {
       float *pstep = (float*)&cloud2_.data[i * cloud2_.point_step];
       int d = 0;
