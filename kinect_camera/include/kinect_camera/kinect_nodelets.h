@@ -51,8 +51,11 @@ namespace kinect_camera
       /** \brief Nodelet initialization routine. */
       virtual void onInit ();
 
+      void spin ();
+
     private:
       KinectDriver* k;
+      boost::thread* spinthread_;
   };
 }
 

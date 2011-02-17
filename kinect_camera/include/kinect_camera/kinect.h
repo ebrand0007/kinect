@@ -125,10 +125,13 @@ namespace kinect_camera
         timeval tv;
         tv.tv_sec = 0;
         tv.tv_usec = 0;
-        int retval = freenect_process_events_nonblock (f_ctx_, &tv);
+        int retval = freenect_process_events (f_ctx_);
         //ROS_INFO_STREAM("retval = " << retval);
         return (retval >= 0);
       }
+
+      /** \brief Spin (!) */
+      bool spin ();
 
     protected:
       /** \brief Send the data over the network. */

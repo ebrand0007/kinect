@@ -36,6 +36,7 @@
  */
 #include <pluginlib/class_list_macros.h>
 #include "kinect_camera/kinect_nodelets.h"
+#include <boost/thread.hpp>
 
 typedef kinect_camera::KinectDriverNodelet KinectDriverNodelet;
 
@@ -56,11 +57,20 @@ void
     return;
   k->start ();
 
-  ros::Duration r (0.0001);
-  while (ros::ok () && k->ok ())
-  {
-    ros::spinOnce ();
-    r.sleep ();
-  }
-  ROS_INFO("Something is not ok()");
+  spinthread_ = new boost::thread (boost::bind (&kinect_camera::KinectDriverNodelet::spin, this));
+
+//  ros::Duration r (0.0001);
+//  while (ros::ok () && k->ok ())
+//  {
+//    ros::spinOnce ();
+//    r.sleep ();
+//  }
+//  ROS_INFO("Something is not ok()");
 }
+
+void
+kinect_camera::KinectDriverNodelet::spin ()
+{
+  k->spin ();
+}
+

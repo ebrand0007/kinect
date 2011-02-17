@@ -640,4 +640,16 @@ void KinectDriver::depthBufferTo8BitImage(const freenect_depth * buf)
   }
 }
 
+bool KinectDriver::spin()
+{
+  ROS_INFO("Entering KinectDriver::spin()");
+  ros::Duration r (0.0001);
+  while (ros::ok () && ok ())
+  {
+    ros::spinOnce ();
+    r.sleep ();
+  }
+  ROS_INFO("Exiting KinectDriver::spin()");
+}
+
 } // namespace kinect_camera
